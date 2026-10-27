@@ -1,35 +1,32 @@
-FROM alpine:3.12 as build
+FROM ubuntu:24.04 AS build
 
-RUN apk add --no-cache --update alpine-sdk linux-headers git zlib-dev openssl-dev gperf cmake
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends g++ make cmake gperf libssl-dev zlib1g-dev \
+ && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /usr/src/telegram-bot-api
+WORKDIR /src
+COPY . .
 
-COPY CMakeLists.txt /usr/src/telegram-bot-api
-ADD td /usr/src/telegram-bot-api/td
-ADD telegram-bot-api /usr/src/telegram-bot-api/telegram-bot-api
+RUN cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/telegram-bot-api \
+ && cmake --build build --target telegram-bot-api -j"$(nproc)" \
+ && cmake --install build --strip \
+ && rm -rf build
 
-RUN mkdir -p build \
- && cd build \
- && cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX:PATH=.. .. \
- && cmake --build . --target install -j $(nproc) \
- && strip /usr/src/telegram-bot-api/bin/telegram-bot-api
+FROM ubuntu:24.04
 
-FROM alpine:3.12
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates libssl3t64 zlib1g \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --system --home-dir /var/lib/telegram-bot-api --create-home telegram-bot-api
 
-ENV TELEGRAM_WORK_DIR="/var/lib/telegram-bot-api" \
-    TELEGRAM_TEMP_DIR="/tmp/telegram-bot-api"
+COPY --from=build /opt/telegram-bot-api/bin/telegram-bot-api /usr/local/bin/telegram-bot-api
 
-RUN apk add --no-cache --update openssl libstdc++
-COPY --from=build /usr/src/telegram-bot-api/bin/telegram-bot-api /usr/local/bin/telegram-bot-api
-COPY docker-entrypoint.sh /docker-entrypoint.sh
-RUN addgroup -g 101 -S telegram-bot-api \
- && adduser -S -D -H -u 101 -h ${TELEGRAM_WORK_DIR} -s /sbin/nologin -G telegram-bot-api -g telegram-bot-api telegram-bot-api \
- && chmod +x /docker-entrypoint.sh \
- && mkdir -p ${TELEGRAM_WORK_DIR} ${TELEGRAM_TEMP_DIR} \
- && chown telegram-bot-api:telegram-bot-api ${TELEGRAM_WORK_DIR} ${TELEGRAM_TEMP_DIR}\
- && chmod 700 ${TELEGRAM_TEMP_DIR}
-USER telegram-bot-api:telegram-bot-api
+USER telegram-bot-api
+WORKDIR /var/lib/telegram-bot-api
+VOLUME /var/lib/telegram-bot-api
+EXPOSE 8081
 
-HEALTHCHECK CMD nc -z localhost 8081
-EXPOSE 8081/tcp 8082/tcp
-ENTRYPOINT ["/docker-entrypoint.sh"]
+# TELEGRAM_API_ID and TELEGRAM_API_HASH must be provided via environment variables
+ENTRYPOINT ["telegram-bot-api", "--dir=/var/lib/telegram-bot-api", "--temp-dir=/tmp"]

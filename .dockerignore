@@ -1,5 +1,10 @@
+.git
+**/.git
 .github
+build
+build-*
 README.md
 LICENSE*.txt
 build.html
-
+tdlight-api-openapi.yaml
+icons
