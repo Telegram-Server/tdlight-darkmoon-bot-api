@@ -1,4 +1,4 @@
 [submodule "td"]
 	path = td
 	url = https://github.com/Telegram-Server/tdlib-td.git
-	branch = custom/1.8.67
+	branch = custom-public/1.8.67
